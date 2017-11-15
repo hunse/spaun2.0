@@ -4,7 +4,6 @@ import nengo
 from nengo.spa.module import Module
 from nengo.utils.network import with_self
 
-from ..config import cfg
 from ..vocabs import ps_task_vocab, ps_state_vocab, ps_dec_vocab
 from ..vocabs import ps_task_mb_gate_sp_inds, ps_task_mb_rst_sp_inds
 from ..vocabs import ps_task_init_vis_sp_inds, ps_task_init_task_sp_inds
@@ -13,29 +12,30 @@ from ..vocabs import ps_dec_mb_gate_sp_inds, ps_dec_mb_rst_sp_inds
 
 
 class ProductionSystem(Module):
-    def __init__(self, label="Prod Sys", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Prod Sys", seed=None, add_to_container=None):
         super(ProductionSystem, self).__init__(label, seed, add_to_container)
+        self.cfg = cfg
         self.init_module()
 
     @with_self
     def init_module(self):
         # Memory block to hold task information
-        if cfg.ps_use_am_mb:
+        if self.cfg.ps_use_am_mb:
             self.ps_task_mb = \
-                cfg.make_mem_block(vocab=ps_task_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_task_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    cleanup_mode=1, fdbk_transform=1.05,
                                    wta_output=True, reset_key='X')
 
             self.ps_state_mb = \
-                cfg.make_mem_block(vocab=ps_state_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_state_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    cleanup_mode=1, fdbk_transform=1.05,
                                    wta_output=True, reset_key='TRANS0')
 
             self.ps_dec_mb = \
-                cfg.make_mem_block(vocab=ps_dec_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_dec_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    cleanup_mode=1, fdbk_transform=1.05,
                                    wta_output=True, reset_key='FWD')
 
@@ -47,18 +47,18 @@ class ProductionSystem(Module):
                 self.ps_dec_mb.mem2.mem.output_utilities
         else:
             self.ps_task_mb = \
-                cfg.make_mem_block(vocab=ps_task_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_task_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    fdbk_transform=1.005, reset_key='X')
 
             self.ps_state_mb = \
-                cfg.make_mem_block(vocab=ps_state_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_state_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    fdbk_transform=1.005, reset_key='TRANS0')
 
             self.ps_dec_mb = \
-                cfg.make_mem_block(vocab=ps_dec_vocab,
-                                   input_transform=cfg.ps_mb_gain_scale,
+                self.cfg.make_mem_block(vocab=ps_dec_vocab,
+                                   input_transform=self.cfg.ps_mb_gain_scale,
                                    fdbk_transform=1.005, reset_key='FWD')
 
             self.ps_task_utilities = \
@@ -83,7 +83,7 @@ class ProductionSystem(Module):
 
         # Create threshold ensemble to handle initialization of tasks
         self.bias_node = nengo.Node(1)
-        self.task_init = cfg.make_thresh_ens_net(0.6)
+        self.task_init = self.cfg.make_thresh_ens_net(0.6)
 
         nengo.Connection(self.bias_node, self.task_init.input, transform=-0.75)
         nengo.Connection(self.task_init.output, self.ps_task_mb.gate)
@@ -105,14 +105,14 @@ class ProductionSystem(Module):
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_task_mb_gate_sp_inds],
                 self.ps_task_mb.gate,
-                transform=[[cfg.mb_gate_scale] * len(ps_task_mb_gate_sp_inds)])
+                transform=[[self.cfg.mb_gate_scale] * len(ps_task_mb_gate_sp_inds)])
             nengo.Connection(parent_net.vis.neg_attention,
                              self.ps_task_mb.gate, transform=-2, synapse=0.01)
 
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_task_mb_rst_sp_inds],
                 self.ps_task_mb.reset,
-                transform=[[cfg.mb_gate_scale] * len(ps_task_mb_rst_sp_inds)])
+                transform=[[self.cfg.mb_gate_scale] * len(ps_task_mb_rst_sp_inds)])
 
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_task_init_vis_sp_inds],
@@ -123,7 +123,7 @@ class ProductionSystem(Module):
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_state_mb_gate_sp_inds],
                 self.ps_state_mb.gate,
-                transform=[[cfg.mb_gate_scale] *
+                transform=[[self.cfg.mb_gate_scale] *
                            len(ps_state_mb_gate_sp_inds)])
             nengo.Connection(parent_net.vis.neg_attention,
                              self.ps_state_mb.gate, transform=-2, synapse=0.01)
@@ -131,20 +131,20 @@ class ProductionSystem(Module):
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_state_mb_rst_sp_inds],
                 self.ps_state_mb.reset,
-                transform=[[cfg.mb_gate_scale] * len(ps_state_mb_rst_sp_inds)])
+                transform=[[self.cfg.mb_gate_scale] * len(ps_state_mb_rst_sp_inds)])
 
             # ###### Dec MB ########
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_dec_mb_gate_sp_inds],
                 self.ps_dec_mb.gate,
-                transform=[[cfg.mb_gate_scale] * len(ps_dec_mb_gate_sp_inds)])
+                transform=[[self.cfg.mb_gate_scale] * len(ps_dec_mb_gate_sp_inds)])
             nengo.Connection(parent_net.vis.neg_attention,
                              self.ps_dec_mb.gate, transform=-2, synapse=0.01)
 
             nengo.Connection(
                 parent_net.vis.am_utilities[ps_dec_mb_rst_sp_inds],
                 self.ps_dec_mb.reset,
-                transform=[[cfg.mb_gate_scale] * len(ps_dec_mb_rst_sp_inds)])
+                transform=[[self.cfg.mb_gate_scale] * len(ps_dec_mb_rst_sp_inds)])
         else:
             warn("ProductionSystem Module - Cannot connect from 'vis'")
 

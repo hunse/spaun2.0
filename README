@@ -15,7 +15,7 @@ Running with Nengo OCL
 
 If you want to run with ``nengo_ocl``:
 
-    python run_spaun.py -d 512 --ocl --ocl_platform=1 --ocl_device=3
+    python run_spaun.py -d 512 --ocl --ocl_platform=1 --ocl_device=0
 
 where:
     - the -d flag sets the dimensionality of spaun,
@@ -27,6 +27,4 @@ where:
 To determine the ``ocl_platform`` and ``ocl_device`` of the device you want to
 use, see ``pyopencl.create_some_context()``.
 
-To enable OCL profiling, find where the ``nengo_ocl.Simulator`` is created
-in ``run_spaun.py``, and uncomment the version that has provifiling enabled.
-Also uncomment the line to print profiling.
+To enable OCL profiling, add the ``--ocl_profile`` flag.

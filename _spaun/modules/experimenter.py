@@ -7,7 +7,6 @@ import nengo
 from nengo.spa.module import Module
 from nengo.utils.network import with_self
 
-from ..config import cfg
 from ..vocabs import vis_vocab, mtr_vocab
 from .vision import get_image as vis_get_image
 from .vision import get_image_label
@@ -235,20 +234,21 @@ def get_est_runtime():
 
 
 class Stimulus(Module):
-    def __init__(self, label="Stimulus", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Stimulus", seed=None, add_to_container=None):
+        self.cfg = cfg
         super(Stimulus, self).__init__(label, seed, add_to_container)
         self.init_module()
 
     @with_self
     def init_module(self):
-        if cfg.use_mpi:
+        if self.cfg.use_mpi:
             import nengo_mpi
 
             dimension = get_image()[0].size
             self.output = \
-                nengo_mpi.SpaunStimulus(dimension, cfg.raw_seq,
-                                        cfg.present_interval,
-                                        cfg.present_blanks)
+                nengo_mpi.SpaunStimulus(dimension, self.cfg.raw_seq,
+                                        self.cfg.present_interval,
+                                        self.cfg.present_blanks)
         else:
             self.output = nengo.Node(output=stim_func_vis,
                                      label='Stim Module Out')
@@ -271,62 +271,12 @@ class StimulusDummy(Module):
         self.outputs = dict(default=(self.output, vis_vocab))
 
 
-def monitor_func(t, x, monitor, stim_seq=None):
-    ind = t / cfg.present_interval / (2 ** cfg.present_blanks)
-    eff_ind = int(ind)
-
-    if (eff_ind != monitor.prev_ind and eff_ind < len(stim_seq)):
-        stim_char = stim_seq[eff_ind]
-        if (stim_char == '.'):
-            monitor.write_to_file('_')
-            # print '_', eff_ind, monitor.prev_ind
-        elif stim_char == 'A' and monitor.prev_ind >= 0:
-            monitor.write_to_file('\nA')
-            # print '\nA', eff_ind, monitor.prev_ind
-        elif isinstance(stim_char, int):
-            monitor.write_to_file('<%s>' % stim_char)
-            # print "<", stim_char, ">", eff_ind, monitor.prev_ind
-        elif stim_char in num_rev_map:
-            monitor.write_to_file('%s' % num_rev_map[stim_char])
-            # print num_rev_map[stim_char], eff_ind, monitor.prev_ind
-        elif stim_char in sym_rev_map:
-            monitor.write_to_file('%s' % sym_rev_map[stim_char])
-            # print sym_rev_map[stim_char], eff_ind, monitor.prev_ind
-        elif stim_char is not None:
-            monitor.write_to_file('%s' % str(stim_char))
-            # print stim_char, eff_ind, monitor.prev_ind
-
-        if cfg.present_blanks and stim_char is not None:
-            monitor.write_to_file('_')
-            # print ' ', eff_ind, monitor.prev_ind
-        monitor.prev_ind = eff_ind
-        monitor.data_obj.flush()
-
-    # Determine what has been written
-    write_inds = x[:-2]
-    write_out_ind = int(np.sum(np.where(write_inds > 0.5)))
-    if write_out_ind >= 0 and write_out_ind < len(num_out_list):
-        write_out = num_out_list[write_out_ind]
-    else:
-        write_out = monitor.null_output
-
-    mtr_ramp = x[-2]
-    mtr_disable = x[-1]
-
-    if mtr_disable < 0.5:
-        if mtr_ramp > monitor.mtr_write_min and not monitor.mtr_written:
-            monitor.write_to_file(write_out)
-            monitor.mtr_written = True
-            monitor.data_obj.flush()
-        elif mtr_ramp < monitor.mtr_reset_max:
-            monitor.mtr_written = False
-
-
 class MonitorData(object):
-    def __init__(self):
+    def __init__(self, cfg):
+        self.cfg = cfg
         self.data_filename = \
-            os.path.join(cfg.data_dir,
-                         cfg.probe_data_filename[:-4] + '_log.txt')
+            os.path.join(self.cfg.data_dir,
+                         self.cfg.probe_data_filename[:-4] + '_log.txt')
         self.data_obj = open(self.data_filename, 'a')
 
         self.prev_ind = -1
@@ -342,10 +292,10 @@ class MonitorData(object):
         self.data_obj.write('# - Run datetime: %s\n' % datetime.now())
         self.data_obj.write('# Spaun Configuration Options:\n')
         self.data_obj.write('# ----------------------------\n')
-        for param_name in sorted(cfg.__dict__.keys()):
-            if not callable(getattr(cfg, param_name)):
+        for param_name in sorted(self.cfg.__dict__.keys()):
+            if not callable(getattr(self.cfg, param_name)):
                 self.data_obj.write('# - %s = %s\n' %
-                                    (param_name, getattr(cfg, param_name)))
+                                    (param_name, getattr(self.cfg, param_name)))
         self.data_obj.write('# ----------------------------\n')
 
     def write_to_file(self, str):
@@ -363,26 +313,78 @@ class MonitorData(object):
 
 
 class Monitor(Module):
-    def __init__(self, label="Monitor", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Monitor", seed=None, add_to_container=None):
         super(Monitor, self).__init__(label, seed, add_to_container)
-        self.monitor_data = MonitorData()
+        self.cfg = cfg
+        self.monitor_data = MonitorData(self.cfg)
         self.init_module()
 
     @with_self
     def init_module(self):
-        if cfg.use_mpi:
+        if self.cfg.use_mpi:
             raise RuntimeError('Not Implemented')
         else:
             self.output = \
-                nengo.Node(output=self.monitor_node_func,
+                nengo.Node(output=self.make_node_func(),
                            size_in=len(mtr_vocab.keys) + 3,
                            label='Experiment monitor')
 
         # Define vocabulary inputs and outputs
         self.outputs = dict(default=(self.output, vis_vocab))
 
-    def monitor_node_func(self, t, x):
-        return monitor_func(t, x, self.monitor_data, cfg.stim_seq)
+    def make_node_func(self):
+
+        def monitor_func(t, x, monitor=self.monitor_data, stim_seq=self.cfg.stim_seq):
+            ind = t / self.cfg.present_interval / (2 ** self.cfg.present_blanks)
+            eff_ind = int(ind)
+
+            if (eff_ind != monitor.prev_ind and eff_ind < len(stim_seq)):
+                stim_char = stim_seq[eff_ind]
+                if (stim_char == '.'):
+                    monitor.write_to_file('_')
+                    # print '_', eff_ind, monitor.prev_ind
+                elif stim_char == 'A' and monitor.prev_ind >= 0:
+                    monitor.write_to_file('\nA')
+                    # print '\nA', eff_ind, monitor.prev_ind
+                elif isinstance(stim_char, int):
+                    monitor.write_to_file('<%s>' % stim_char)
+                    # print "<", stim_char, ">", eff_ind, monitor.prev_ind
+                elif stim_char in num_rev_map:
+                    monitor.write_to_file('%s' % num_rev_map[stim_char])
+                    # print num_rev_map[stim_char], eff_ind, monitor.prev_ind
+                elif stim_char in sym_rev_map:
+                    monitor.write_to_file('%s' % sym_rev_map[stim_char])
+                    # print sym_rev_map[stim_char], eff_ind, monitor.prev_ind
+                elif stim_char is not None:
+                    monitor.write_to_file('%s' % str(stim_char))
+                    # print stim_char, eff_ind, monitor.prev_ind
+
+                if self.cfg.present_blanks and stim_char is not None:
+                    monitor.write_to_file('_')
+                    # print ' ', eff_ind, monitor.prev_ind
+                monitor.prev_ind = eff_ind
+                monitor.data_obj.flush()
+
+            # Determine what has been written
+            write_inds = x[:-2]
+            write_out_ind = int(np.sum(np.where(write_inds > 0.5)))
+            if write_out_ind >= 0 and write_out_ind < len(num_out_list):
+                write_out = num_out_list[write_out_ind]
+            else:
+                write_out = monitor.null_output
+
+            mtr_ramp = x[-2]
+            mtr_disable = x[-1]
+
+            if mtr_disable < 0.5:
+                if mtr_ramp > monitor.mtr_write_min and not monitor.mtr_written:
+                    monitor.write_to_file(write_out)
+                    monitor.mtr_written = True
+                    monitor.data_obj.flush()
+                elif mtr_ramp < monitor.mtr_reset_max:
+                    monitor.mtr_written = False
+
+        return monitor_func
 
     def setup_connections(self, parent_net):
         # Set up connections from dec module

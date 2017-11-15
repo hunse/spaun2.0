@@ -5,11 +5,10 @@ import nengo
 from nengo.spa import Vocabulary
 from nengo.synapses import Lowpass
 
-from .config import cfg
-from .vocabs import vis_vocab, pos_vocab, enum_vocab
-from .vocabs import ps_task_vocab, ps_state_vocab, ps_dec_vocab, ps_cmp_vocab
-from .vocabs import mtr_vocab, mtr_disp_vocab, item_vocab, pos1_vocab, vocab
-from .vocabs import mtr_sp_scale_factor
+# from .vocabs import vis_vocab, pos_vocab, enum_vocab
+# from .vocabs import ps_task_vocab, ps_state_vocab, ps_dec_vocab, ps_cmp_vocab
+# from .vocabs import mtr_vocab, mtr_disp_vocab, item_vocab, pos1_vocab, vocab
+# from .vocabs import mtr_sp_scale_factor
 from .modules.working_memory import WorkingMemoryDummy
 from .modules.transform_system import TransformationSystemDummy
 
@@ -60,7 +59,7 @@ def add_to_anim_config(anim_config, key, data_func_name, data_func_params,
                         'plot_type_params': plot_type_params})
 
 
-def config_and_setup_probes(model):
+def config_and_setup_probes(model, cfg):
     version = 4.0
 
     config_filename = cfg.probe_data_filename[:-4] + '_cfg.npz'

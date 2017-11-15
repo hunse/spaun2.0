@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 
 import nengo
+nengo.log('info')
 
 
 # ----- Defaults -----
@@ -159,31 +160,26 @@ if args.seed < 0 or args.enable_cache:
 else:
     nengo.rc.set("decoder_cache", "enabled", "False")
 
-# ----- Backend Configurations -----
-from _spaun.config import cfg
-
-cfg.backend = args.b
-if args.ocl:
-    cfg.backend = 'ocl'
-if args.mpi:
-    cfg.backend = 'mpi'
-if args.spinn:
-    cfg.backend = 'spinn'
-
-print "BACKEND: %s" % cfg.backend.upper()
-
 # ----- Batch runs -----
 for n in range(args.n):
     print ("\n======================== RUN %i OF %i ========================" %
            (n + 1, args.n))
 
-    # ----- Seeeeeeeed -----
-    if args.seed < 0:
-        seed = int(time.time())
-    else:
-        seed = args.seed
+    from _spaun.config import SpaunConfig
+    cfg = SpaunConfig(args.seed)
 
-    cfg.set_seed(seed)
+    # ----- Backend Configurations -----
+    cfg.backend = args.b
+    if args.ocl:
+        cfg.backend = 'ocl'
+    if args.mpi:
+        cfg.backend = 'mpi'
+    if args.spinn:
+        cfg.backend = 'spinn'
+
+    print "BACKEND: %s" % cfg.backend.upper()
+
+    # ----- Seeeeeeeed -----
     print "MODEL SEED: %i" % cfg.seed
 
     # ----- Model Configurations -----
@@ -230,7 +226,7 @@ for n in range(args.n):
     from _spaun.modules import get_est_runtime
 
     # ----- Spaun proper -----
-    model = Spaun()
+    model = Spaun(cfg)
 
     # ----- Display stimulus seq -----
     print "PROCESSED RAW STIM SEQ: %s" % (str(cfg.raw_seq))
@@ -248,7 +244,7 @@ for n in range(args.n):
 
     if make_probes:
         print "PROBE FILENAME: %s" % cfg.probe_data_filename
-        config_and_setup_probes(model)
+        config_and_setup_probes(model, cfg)
 
     # ----- Neuron count debug -----
     print "MODEL N_NEURONS:  %i" % (get_total_n_neurons(model))
@@ -286,6 +282,7 @@ for n in range(args.n):
     if cfg.use_opencl:
         import pyopencl as cl
         import nengo_ocl
+        import dill
 
         print "------ OCL ------"
         print "AVAILABLE PLATFORMS:"
@@ -307,6 +304,12 @@ for n in range(args.n):
             print '  ' + '\n  '.join(map(str, pltf.get_devices()))
         sim = nengo_ocl.Simulator(model, dt=cfg.sim_dt, context=ctx,
                                   profiling=args.ocl_profile)
+
+        built_model_file = 'spaun_built_model.pkl'
+        with open(filename, 'wb') as f:
+            dill.dump(dict(sim_model=sim.model), f)
+            print("Saved %r" % built_model_file)
+
     elif cfg.use_mpi:
         import nengo_mpi
 
@@ -331,7 +334,13 @@ for n in range(args.n):
                                       partitioner=partitioner,
                                       save_file=mpi_savefile)
     else:
+        import dill
         sim = nengo.Simulator(model, dt=cfg.sim_dt)
+
+        built_model_file = 'spaun_built_model.pkl'
+        with open(built_model_file, 'wb') as f:
+            dill.dump(dict(sim_model=sim.model), f)
+            print("Saved %r" % built_model_file)
 
     t_build = time.time() - timestamp
     timestamp = time.time()
@@ -348,7 +357,7 @@ for n in range(args.n):
 
         if args.ocl_profile:
             sim.print_plans()
-            sim.print_profiling()
+            sim.print_profiling(sort=1)
 
         t_simrun = time.time() - timestamp
         print "MODEL N_NEURONS: %i" % (get_total_n_neurons(model))

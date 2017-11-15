@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 
 import nengo
@@ -9,13 +11,13 @@ from nengo.networks import CircularConvolution as CConv
 from _spa import MemoryBlock as MB
 from _networks import AssociativeMemory as AM
 from _networks import Selector, Router, VectorNormalize
+from .vocabs import Vocabs
 # from arms import Arm3Link
 
 
 class SpaunConfig(object):
-    def __init__(self):
-        self.seed = -1
-        self.set_seed(self.seed)
+    def __init__(self, seed):
+        self.set_seed(seed)
 
         self.raw_seq_str = ''
         self.raw_seq = None
@@ -83,6 +85,8 @@ class SpaunConfig(object):
         self.data_dir = ''
         self.probe_data_filename = 'probe_data.npz'
 
+        self.vocabs = Vocabs(self)
+
     @property
     def backend(self):
         return self._backend
@@ -120,15 +124,15 @@ class SpaunConfig(object):
 
     @property
     def mtr_arm_class(self):
-        arm_module = __import__('_spaun.arms.%s' % self.mtr_arm_type,
-                                globals(), locals(), 'Arm')
-        return arm_module.Arm
+        # arm_module = __import__('_spaun.arms.%s' % self.mtr_arm_type,
+        #                         globals(), locals(), 'Arm')
+        # return arm_module.Arm
+        return lambda: None
 
     def set_seed(self, seed):
-        if seed > 0:
-            self.seed = seed
-            np.random.seed(self.seed)
-            self.rng = np.random.RandomState(self.seed)
+        self.seed = int(time.time()) if seed < 0 else seed
+        np.random.seed(self.seed)
+        self.rng = np.random.RandomState(self.seed)
 
     def get_optimal_sp_radius(self, dim=None):
         if dim is None:
@@ -139,7 +143,7 @@ class SpaunConfig(object):
                                 ext='npz'):
         suffix = str(suffix).replace('?', '@')
 
-        raw_seq = cfg.raw_seq_str.replace('?', '@').replace(':', ';')
+        raw_seq = self.raw_seq_str.replace('?', '@').replace(':', ';')
         raw_seq = raw_seq.replace('>', ')').replace('<', '(')
 
         if self.present_blanks:
@@ -311,4 +315,4 @@ class SpaunConfig(object):
                                      transform=[[-inhib_scale]] * e.n_neurons,
                                      synapse=None)
 
-cfg = SpaunConfig()
+    def

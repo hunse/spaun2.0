@@ -6,59 +6,59 @@ from nengo.spa.module import Module
 from nengo.utils.network import with_self
 
 from .._spa import Compare
-from ..config import cfg
 from ..utils import strs_to_inds, invol_matrix
 from ..vocabs import vocab, ps_state_sp_strs, ps_dec_sp_strs
 from .transform import Assoc_Mem_Transforms_Network
 
 
 class TransformationSystem(Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super(TransformationSystem, self).__init__()
+        self.cfg = cfg
         self.init_module()
 
     @with_self
     def init_module(self):
         # ----- Input and output selectors ----- #
-        self.select_in_a = cfg.make_selector(3)
-        self.select_in_b = cfg.make_selector(6)
-        self.select_out = cfg.make_selector(5)
+        self.select_in_a = self.cfg.make_selector(3)
+        self.select_in_b = self.cfg.make_selector(6)
+        self.select_out = self.cfg.make_selector(5)
 
         # ----- Mem inputs and outputs ----- #
-        self.frm_mb1 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mb2 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mb3 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mbave = nengo.Node(size_in=cfg.sp_dim)
+        self.frm_mb1 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mb2 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mb3 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mbave = nengo.Node(size_in=self.cfg.sp_dim)
 
         nengo.Connection(self.frm_mb1, self.select_in_a.input0, synapse=None)
         nengo.Connection(self.frm_mb2, self.select_in_a.input1, synapse=None)
         nengo.Connection(self.frm_mb3, self.select_in_a.input2, synapse=None)
 
         nengo.Connection(self.frm_mb2, self.select_in_b.input2, synapse=None,
-                         transform=invol_matrix(cfg.sp_dim))
+                         transform=invol_matrix(self.cfg.sp_dim))
         nengo.Connection(self.frm_mb3, self.select_in_b.input3, synapse=None,
-                         transform=invol_matrix(cfg.sp_dim))
+                         transform=invol_matrix(self.cfg.sp_dim))
         nengo.Connection(self.frm_mbave, self.select_in_b.input4, synapse=None)
         nengo.Connection(self.frm_mb3, self.select_in_b.input5, synapse=None)
 
         nengo.Connection(self.frm_mb1, self.select_out.input2)
 
         # ----- Normalization networks for inputs to CConv and Compare ----- #
-        self.norm_a = cfg.make_norm_net()
-        self.norm_b = cfg.make_norm_net()
+        self.norm_a = self.cfg.make_norm_net()
+        self.norm_b = self.cfg.make_norm_net()
 
         nengo.Connection(self.select_in_a.output, self.norm_a.input)
         nengo.Connection(self.select_in_b.output, self.norm_b.input)
 
         # ----- Cir conv 1 ----- #
-        self.cconv1 = cfg.make_cir_conv(input_magnitude=cfg.trans_cconv_radius)
+        self.cconv1 = self.cfg.make_cir_conv(input_magnitude=self.cfg.trans_cconv_radius)
 
         nengo.Connection(self.norm_a.output, self.cconv1.A,
                          transform=1.25)
         nengo.Connection(self.norm_b.output, self.cconv1.B,
                          transform=1.25)
         nengo.Connection(self.cconv1.output, self.select_out.input3,
-                         transform=invol_matrix(cfg.sp_dim))
+                         transform=invol_matrix(self.cfg.sp_dim))
         nengo.Connection(self.cconv1.output, self.select_out.input4)
 
         # ----- Assoc memory transforms (for QA task) -----
@@ -71,16 +71,16 @@ class TransformationSystem(Module):
         nengo.Connection(self.cconv1.output, self.am_trfms.frm_cconv)
 
         nengo.Connection(self.am_trfms.pos1_to_pos, self.select_in_b.input0,
-                         transform=invol_matrix(cfg.sp_dim))
+                         transform=invol_matrix(self.cfg.sp_dim))
         nengo.Connection(self.am_trfms.pos1_to_num, self.select_in_b.input1,
-                         transform=invol_matrix(cfg.sp_dim))
+                         transform=invol_matrix(self.cfg.sp_dim))
         nengo.Connection(self.am_trfms.num_to_pos1, self.select_out.input0)
         nengo.Connection(self.am_trfms.pos_to_pos1, self.select_out.input1)
 
         # ----- Compare transformation (for counting task) -----
         self.compare = \
             Compare(vocab, output_no_match=True, threshold_outputs=0.5,
-                    dot_product_input_magnitude=cfg.get_optimal_sp_radius(),
+                    dot_product_input_magnitude=self.cfg.get_optimal_sp_radius(),
                     label="Compare")
 
         nengo.Connection(self.norm_a.output, self.compare.inputA,
@@ -89,7 +89,7 @@ class TransformationSystem(Module):
                          transform=1.5)
 
         # ----- Output node -----
-        self.output = nengo.Node(size_in=cfg.sp_dim)
+        self.output = nengo.Node(size_in=self.cfg.sp_dim)
         nengo.Connection(self.select_out.output, self.output, synapse=None)
 
         # ----- Set up module vocab inputs and outputs -----
@@ -140,7 +140,7 @@ class TransformationSystem(Module):
             nengo.Connection(ps_state_mb_utils[in_b_sel1_inds],
                              self.select_in_b.sel1)
 
-            in_b_sel2 = cfg.make_thresh_ens_net()
+            in_b_sel2 = self.cfg.make_thresh_ens_net()
             in_b_sel2_inds = strs_to_inds(['TRANS1'], ps_state_sp_strs)
             nengo.Connection(ps_state_mb_utils[in_b_sel2_inds],
                              in_b_sel2.input)
@@ -149,7 +149,7 @@ class TransformationSystem(Module):
                              in_b_sel2.input, transform=-1)
             nengo.Connection(in_b_sel2.output, self.select_in_b.sel2)
 
-            in_b_sel3 = cfg.make_thresh_ens_net()
+            in_b_sel3 = self.cfg.make_thresh_ens_net()
             in_b_sel3_inds = strs_to_inds(['TRANS2'], ps_state_sp_strs)
             nengo.Connection(ps_state_mb_utils[in_b_sel3_inds],
                              in_b_sel3.input)
@@ -180,7 +180,7 @@ class TransformationSystem(Module):
             nengo.Connection(ps_state_mb_utils[out_sel1_inds],
                              self.select_out.sel1)
 
-            out_sel2 = cfg.make_thresh_ens_net()
+            out_sel2 = self.cfg.make_thresh_ens_net()
             out_sel2_inds = strs_to_inds(['TRANS0', 'CNT1'], ps_state_sp_strs)
             nengo.Connection(ps_state_mb_utils[out_sel2_inds], out_sel2.input,
                              transform=[[1] * len(out_sel2_inds)])
@@ -189,7 +189,7 @@ class TransformationSystem(Module):
                              transform=-1)
             nengo.Connection(out_sel2.output, self.select_out.sel2)
 
-            out_sel3 = cfg.make_thresh_ens_net()
+            out_sel3 = self.cfg.make_thresh_ens_net()
             out_sel3_inds = strs_to_inds(['TRANS1', 'TRANS2'],
                                          ps_state_sp_strs)
             nengo.Connection(ps_state_mb_utils[out_sel3_inds], out_sel3.input,
@@ -231,26 +231,26 @@ class TransformationSystemDummy(TransformationSystem):
 
     @with_self
     def init_module(self):
-        self.select_in_a = cfg.make_selector(2, n_ensembles=1,
-                                             ens_dimensions=cfg.sp_dim,
-                                             n_neurons=cfg.sp_dim)
-        self.select_in_b = cfg.make_selector(5, n_ensembles=1,
-                                             ens_dimensions=cfg.sp_dim,
-                                             n_neurons=cfg.sp_dim)
-        self.select_out = cfg.make_selector(4, n_ensembles=1,
-                                            ens_dimensions=cfg.sp_dim,
-                                            n_neurons=cfg.sp_dim)
+        self.select_in_a = self.cfg.make_selector(2, n_ensembles=1,
+                                             ens_dimensions=self.cfg.sp_dim,
+                                             n_neurons=self.cfg.sp_dim)
+        self.select_in_b = self.cfg.make_selector(5, n_ensembles=1,
+                                             ens_dimensions=self.cfg.sp_dim,
+                                             n_neurons=self.cfg.sp_dim)
+        self.select_out = self.cfg.make_selector(4, n_ensembles=1,
+                                            ens_dimensions=self.cfg.sp_dim,
+                                            n_neurons=self.cfg.sp_dim)
 
         # ----- Mem inputs and outputs ----- #
-        self.frm_mb1 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mb2 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mb3 = nengo.Node(size_in=cfg.sp_dim)
-        self.frm_mbave = nengo.Node(size_in=cfg.sp_dim)
+        self.frm_mb1 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mb2 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mb3 = nengo.Node(size_in=self.cfg.sp_dim)
+        self.frm_mbave = nengo.Node(size_in=self.cfg.sp_dim)
 
         # ----- Compare network (for counting task) -----
         def cmp_func(x, cmp_vocab):
-            vec_A = x[:cfg.sp_dim]
-            vec_B = x[cfg.sp_dim:]
+            vec_A = x[:self.cfg.sp_dim]
+            vec_B = x[self.cfg.sp_dim:]
             if np.linalg.norm(vec_A) != 0:
                 vec_A = vec_A / np.linalg.norm(vec_A)
             if np.linalg.norm(vec_B) != 0:
@@ -263,11 +263,11 @@ class TransformationSystemDummy(TransformationSystem):
                 return cmp_vocab.parse('NO_MATCH').v
 
         self.compare = \
-            nengo.Node(size_in=cfg.sp_dim * 2,
+            nengo.Node(size_in=self.cfg.sp_dim * 2,
                        output=lambda t, x: cmp_func(x, cmp_vocab=vocab))
 
-        nengo.Connection(self.frm_mb2, self.compare[:cfg.sp_dim])
-        nengo.Connection(self.frm_mb3, self.compare[cfg.sp_dim:])
+        nengo.Connection(self.frm_mb2, self.compare[:self.cfg.sp_dim])
+        nengo.Connection(self.frm_mb3, self.compare[self.cfg.sp_dim:])
 
         # ----- Output node -----
         self.output = self.frm_mb1

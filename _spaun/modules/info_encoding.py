@@ -13,8 +13,9 @@ from .encoding import Pos_Inc_Network
 
 
 class InfoEncoding(Module):
-    def __init__(self, label="Info Enc", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Info Enc", seed=None, add_to_container=None):
         super(InfoEncoding, self).__init__(label, seed, add_to_container)
+        self.cfg = cfg
         self.init_module()
 
     @with_self
@@ -22,18 +23,18 @@ class InfoEncoding(Module):
         self.pos_inc = Pos_Inc_Network()
 
         # POS x ITEM
-        self.item_cconv = cfg.make_cir_conv()
+        self.item_cconv = self.cfg.make_cir_conv()
         nengo.Connection(self.pos_inc.output, self.item_cconv.A)
 
-        self.enc_output = nengo.Node(size_in=cfg.sp_dim)
+        self.enc_output = nengo.Node(size_in=self.cfg.sp_dim)
         nengo.Connection(self.item_cconv.output, self.enc_output)
 
         # Memory block to store accumulated POS vectors (POSi-1 + POSi)
-        self.pos_mb_acc = cfg.make_mem_block(label="POS MB ACC",
+        self.pos_mb_acc = self.cfg.make_mem_block(label="POS MB ACC",
                                              vocab=pos_vocab, reset_key=0)
         nengo.Connection(self.pos_inc.output, self.pos_mb_acc.input)
         nengo.Connection(self.pos_mb_acc.output, self.pos_mb_acc.input,
-                         transform=cfg.enc_mb_acc_fdbk_scale)
+                         transform=self.cfg.enc_mb_acc_fdbk_scale)
 
         # Define network inputs and outputs
         self.pos_output = self.pos_inc.output
@@ -53,7 +54,7 @@ class InfoEncoding(Module):
             # POS MB Control signals
             nengo.Connection(vis_am_utils[pos_mb_gate_sp_inds],
                              self.pos_inc.gate,
-                             transform=[[cfg.mb_gate_scale] *
+                             transform=[[self.cfg.mb_gate_scale] *
                                         len(pos_mb_gate_sp_inds)])
             nengo.Connection(parent_net.vis.neg_attention,
                              self.pos_inc.gate, transform=-1.25,
@@ -61,13 +62,13 @@ class InfoEncoding(Module):
 
             nengo.Connection(vis_am_utils[pos_mb_rst_sp_inds],
                              self.pos_inc.reset,
-                             transform=[[cfg.mb_gate_scale] *
+                             transform=[[self.cfg.mb_gate_scale] *
                                         len(pos_mb_rst_sp_inds)])
 
             # POS MB ACC Control signals
             nengo.Connection(vis_am_utils[pos_mb_gate_sp_inds],
                              self.pos_mb_acc.gate,
-                             transform=[[cfg.mb_gate_scale] *
+                             transform=[[self.cfg.mb_gate_scale] *
                                         len(pos_mb_gate_sp_inds)])
             nengo.Connection(parent_net.vis.neg_attention,
                              self.pos_mb_acc.gate, transform=-1.25,
@@ -75,7 +76,7 @@ class InfoEncoding(Module):
 
             nengo.Connection(vis_am_utils[pos_mb_acc_rst_sp_inds],
                              self.pos_mb_acc.reset,
-                             transform=[[cfg.mb_gate_scale] *
+                             transform=[[self.cfg.mb_gate_scale] *
                                         len(pos_mb_acc_rst_sp_inds)])
 
             # VIS ITEM Input

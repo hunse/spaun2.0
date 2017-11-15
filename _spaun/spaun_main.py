@@ -1,7 +1,6 @@
 import nengo
 from nengo import spa
 
-from .config import cfg
 from _spaun.modules.experimenter import parse_raw_seq
 from _spaun.modules import Stimulus, Vision, ProdSys, InfoEnc, InfoDec, Motor
 from _spaun.modules import TrfmSys, Memory, Monitor
@@ -21,7 +20,16 @@ from _spaun.modules import TrfmSys, Memory, Monitor
 # - Write display code to automatically capture written digits
 # - Add a way for the command parser to set arbitrary configurations?
 
-def Spaun():
+
+from nengo.solvers import Solver
+class NullSolver(Solver):
+    def __call__(self, A, Y, rng=None, E=None):
+        import numpy as np
+        X = np.zeros((A.shape[1], E.shape[1] if E else Y.shape[1] if Y.ndim > 1 else None))
+        return X, {'rmses': -1., 'time': 0.}
+
+
+def Spaun(cfg):
     # Process the raw stimulus provided to spaun
     parse_raw_seq()
 
@@ -31,16 +39,17 @@ def Spaun():
         model.config[nengo.Ensemble].neuron_type = cfg.neuron_type
         model.config[nengo.Ensemble].n_neurons = cfg.n_neurons_ens
         model.config[nengo.Connection].synapse = cfg.pstc
+        model.config[nengo.Connection].solver = NullSolver()
 
-        model.stim = Stimulus()
-        model.vis = Vision()
-        model.ps = ProdSys()
-        model.enc = InfoEnc()
-        model.mem = Memory()
-        model.trfm = TrfmSys()
-        model.dec = InfoDec()
-        model.mtr = Motor()
-        model.monitor = Monitor()
+        model.stim = Stimulus(cfg)
+        model.vis = Vision(cfg)
+        model.ps = ProdSys(cfg)
+        model.enc = InfoEnc(cfg)
+        model.mem = Memory(cfg)
+        model.trfm = TrfmSys(cfg)
+        model.dec = InfoDec(cfg)
+        # model.mtr = Motor(cfg)
+        model.monitor = Monitor(cfg)
 
         if hasattr(model, 'vis') and hasattr(model, 'ps') and \
            hasattr(model, 'trfm'):

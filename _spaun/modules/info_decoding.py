@@ -5,7 +5,6 @@ import nengo
 from nengo.spa.module import Module
 from nengo.utils.network import with_self
 
-from ..config import cfg
 from ..vocabs import item_vocab, mtr_vocab, mtr_unk_vocab
 from ..vocabs import dec_out_sr_sp_vecs, dec_out_copy_draw_sp_vecs
 from ..vocabs import dec_out_fr_sp_vecs
@@ -18,8 +17,9 @@ from .decoding import Visual_Transform_Network, Output_Classification_Network
 
 
 class InfoDecoding(Module):
-    def __init__(self, label="Info Dec", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Info Dec", seed=None, add_to_container=None):
         super(InfoDecoding, self).__init__(label, seed, add_to_container)
+        self.cfg = cfg
         self.init_module()
 
     @with_self
@@ -27,22 +27,22 @@ class InfoDecoding(Module):
         bias_node = nengo.Node(output=1)
 
         # ---------------------- Inputs and outputs ------------------------- #
-        self.items_input = nengo.Node(size_in=cfg.sp_dim)
-        self.pos_input = nengo.Node(size_in=cfg.sp_dim)
+        self.items_input = nengo.Node(size_in=self.cfg.sp_dim)
+        self.pos_input = nengo.Node(size_in=self.cfg.sp_dim)
 
         # ----------------- Inhibition signal generation -------------------- #
         # Inhibition signal for when TASK != DEC
-        self.dec_am_task_inhibit = cfg.make_thresh_ens_net()
+        self.dec_am_task_inhibit = self.cfg.make_thresh_ens_net()
         nengo.Connection(bias_node, self.dec_am_task_inhibit.input,
                          synapse=None)
 
         # Generic inhibition signal?
-        self.dec_am_inhibit = cfg.make_thresh_ens_net(0.1)
+        self.dec_am_inhibit = self.cfg.make_thresh_ens_net(0.1)
 
         # ---------- Decoding POS mem block gate signal generation ---------- #
         # Decoding POS mem block gate signal generation (from motor system)
-        self.pos_mb_gate_bias = cfg.make_thresh_ens_net(n_neurons=100)
-        self.pos_mb_gate_sig = cfg.make_thresh_ens_net(0.3)
+        self.pos_mb_gate_bias = self.cfg.make_thresh_ens_net(n_neurons=100)
+        self.pos_mb_gate_sig = self.cfg.make_thresh_ens_net(0.3)
 
         # Bias does ...?
         # Gate signal does ...?
@@ -53,7 +53,7 @@ class InfoDecoding(Module):
         # -------------------- Serial decoding network ---------------------- #
         serial_decode = Serial_Recall_Network()
         nengo.Connection(self.items_input, serial_decode.items_input,
-                         transform=cfg.dcconv_item_in_scale, synapse=None)
+                         transform=self.cfg.dcconv_item_in_scale, synapse=None)
         nengo.Connection(self.pos_input, serial_decode.pos_input,
                          synapse=None)
 
@@ -64,13 +64,13 @@ class InfoDecoding(Module):
         # ---------------- Free recall decoding network --------------------- #
         free_recall_decode = Free_Recall_Network()
         nengo.Connection(self.items_input, free_recall_decode.items_input,
-                         transform=cfg.dec_fr_item_in_scale, synapse=None)
+                         transform=self.cfg.dec_fr_item_in_scale, synapse=None)
         nengo.Connection(self.pos_input, free_recall_decode.pos_input,
                          synapse=None)
 
         # Add output of free recall am as a small bias to dec_am
         nengo.Connection(free_recall_decode.output, serial_decode.items_input,
-                         transform=cfg.dec_fr_to_am_scale)
+                         transform=self.cfg.dec_fr_to_am_scale)
 
         # Gating connections
         nengo.Connection(self.dec_am_task_inhibit.output,
@@ -91,7 +91,7 @@ class InfoDecoding(Module):
         self.free_recall_decode = free_recall_decode
 
         # ------------- Visual transform decoding network ------------------- #
-        if cfg.vis_dim > 0:
+        if self.cfg.vis_dim > 0:
             vis_trfm_decode = Visual_Transform_Network()
         else:
             from .decoding.vis_trfm_net import Dummy_Visual_Transform_Network
@@ -129,8 +129,8 @@ class InfoDecoding(Module):
         # 2: Free recall decoder output
         # 3: UNK mtr SP output
         # 4: NULL (all zeros) output
-        self.select_out = cfg.make_selector(5, radius=mtr_sp_scale_factor,
-                                            dimensions=cfg.mtr_dim,
+        self.select_out = self.cfg.make_selector(5, radius=mtr_sp_scale_factor,
+                                            dimensions=self.cfg.mtr_dim,
                                             threshold_sel_in=True)
 
         # Connections for sel0 - SR
@@ -172,8 +172,8 @@ class InfoDecoding(Module):
         self.select_am = self.select_out.sel0
         self.select_vis = self.select_out.sel1
 
-        self.am_out = nengo.Node(size_in=cfg.mtr_dim)
-        self.vt_out = nengo.Node(size_in=cfg.mtr_dim)
+        self.am_out = nengo.Node(size_in=self.cfg.mtr_dim)
+        self.vt_out = nengo.Node(size_in=self.cfg.mtr_dim)
         # nengo.Connection(self.dec_am.output, self.am_out, synapse=None)
         # nengo.Connection(self.vis_transform.output, self.vt_out, synapse=None) ## # noqa
         # nengo.Connection(vis_tfrm_relay.output, self.vt_out, synapse=None)
@@ -234,7 +234,7 @@ class InfoDecoding(Module):
             vis_am_utils = p_net.vis.am_utilities
             nengo.Connection(vis_am_utils[pos_mb_rst_sp_inds],
                              self.free_recall_decode.reset,
-                             transform=[[cfg.mb_gate_scale] *
+                             transform=[[self.cfg.mb_gate_scale] *
                                         len(pos_mb_rst_sp_inds)])
 
             nengo.Connection(p_net.vis.mb_output, self.vis_trfm_input)

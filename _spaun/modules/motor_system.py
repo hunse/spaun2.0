@@ -8,15 +8,15 @@ from nengo.spa.module import Module
 from nengo.utils.network import with_self
 
 from .._networks import DifferenceFunctionEvaluator as DiffFuncEvaltr
-from ..config import cfg
 from ..vocabs import mtr_init_task_sp_vecs, mtr_bypass_task_sp_vecs
 from ..vocabs import mtr_sp_scale_factor
 from .motor import OSController, Ramp_Signal_Network
 
 
 class MotorSystem(Module):
-    def __init__(self, label="Motor Sys", seed=None, add_to_container=None):
+    def __init__(self, cfg, label="Motor Sys", seed=None, add_to_container=None):
         super(MotorSystem, self).__init__(label, seed, add_to_container)
+        self.cfg = cfg
         self.init_module()
 
     @with_self
@@ -25,32 +25,32 @@ class MotorSystem(Module):
 
         # ---------------------- Inputs and outputs ------------------------- #
         # Motor SP input node
-        self.motor_sp_in = nengo.Node(size_in=cfg.mtr_dim)
+        self.motor_sp_in = nengo.Node(size_in=self.cfg.mtr_dim)
 
         # Motor bypass signal (runs the ramp, but doesn't output to the arm)
-        self.motor_bypass = cfg.make_thresh_ens_net()
+        self.motor_bypass = self.cfg.make_thresh_ens_net()
 
         # Motor init signal
-        self.motor_init = cfg.make_thresh_ens_net(0.75)
+        self.motor_init = self.cfg.make_thresh_ens_net(0.75)
 
         # --------------- MOTOR SIGNALLING SYSTEM (STOP / GO) --------------
         # Motor go signal
-        self.motor_go = nengo.Ensemble(cfg.n_neurons_ens, 1)
+        self.motor_go = nengo.Ensemble(self.cfg.n_neurons_ens, 1)
         nengo.Connection(bias_node, self.motor_go)
 
         # Motor stop signal
-        self.motor_stop_input = cfg.make_thresh_ens_net()
+        self.motor_stop_input = self.cfg.make_thresh_ens_net()
         nengo.Connection(bias_node, self.motor_stop_input.input, synapse=None)
         nengo.Connection(self.motor_stop_input.output, self.motor_go.neurons,
-                         transform=[[-3]] * cfg.n_neurons_ens)
+                         transform=[[-3]] * self.cfg.n_neurons_ens)
 
         # --------------- MOTOR SIGNALLING SYSTEM (RAMP SIG) --------------
         self.ramp_sig = Ramp_Signal_Network()
 
         # Signal used to drive the ramp (the constant input signal)
         nengo.Connection(self.motor_go, self.ramp_sig.ramp,
-                         transform=cfg.mtr_ramp_synapse * cfg.mtr_ramp_scale,
-                         synapse=cfg.mtr_ramp_synapse)
+                         transform=self.cfg.mtr_ramp_synapse * self.cfg.mtr_ramp_scale,
+                         synapse=self.cfg.mtr_ramp_synapse)
 
         # Signal to hold the ramp reset as long as the motor system is still
         # initializing (e.g. arm is still going to INIT target)
@@ -62,7 +62,7 @@ class MotorSystem(Module):
                          transform=-1)
 
         # --------------- FUNCTION REPLICATOR SYSTEM --------------
-        mtr_func_dim = cfg.mtr_dim // 2
+        mtr_func_dim = self.cfg.mtr_dim // 2
         func_eval_net = DiffFuncEvaltr(mtr_func_dim, mtr_sp_scale_factor, 2)
         func_eval_net.make_inhibitable(-5)
 
@@ -77,19 +77,20 @@ class MotorSystem(Module):
                          func_eval_net.diff_func_pts[1])
 
         # --------------- MOTOR ARM CONTROL -----------------
-        arm_obj = cfg.mtr_arm_class()
+        arm_obj = self.cfg.mtr_arm_class()
+        zero_centered_arm_ee_loc = None
 
         if arm_obj is not None:
             arm_rest_coord = np.array(arm_obj.position(q=arm_obj.rest_angles,
                                                        ee_only=True))
             # Note: arm_rest_coord is only used for initialization & startup
             #       transients
-            arm_node = nengo.Node(output=lambda t, x, dt=cfg.sim_dt:
+            arm_node = nengo.Node(output=lambda t, x, dt=self.cfg.sim_dt:
                                   arm_obj.apply_torque(x, dt),
                                   size_in=arm_obj.DOF)
 
-            osc_obj = OSController(dt=cfg.sim_dt, arm=arm_obj, kp=cfg.mtr_kp,
-                                   kv=cfg.mtr_kv1, kv2=cfg.mtr_kv2,
+            osc_obj = OSController(dt=self.cfg.sim_dt, arm=arm_obj, kp=self.cfg.mtr_kp,
+                                   kv=self.cfg.mtr_kv1, kv2=self.cfg.mtr_kv2,
                                    init_target=arm_rest_coord)
 
             # Make the osc control
@@ -102,8 +103,8 @@ class MotorSystem(Module):
             # Add bias values to the motor path evaluator output (to shift the
             # drawn digit into the drawing box of the arm)
             nengo.Connection(bias_node, osc_net.target,
-                             transform=[[cfg.mtr_arm_rest_x_bias],
-                                        [cfg.mtr_arm_rest_y_bias]],
+                             transform=[[self.cfg.mtr_arm_rest_x_bias],
+                                        [self.cfg.mtr_arm_rest_y_bias]],
                              synapse=None)
 
             # Feed the torque control signal to the arm
@@ -115,13 +116,13 @@ class MotorSystem(Module):
 
             zero_centered_arm_ee_loc = \
                 nengo.Node(output=lambda t,
-                           bias=np.array([cfg.mtr_arm_rest_x_bias,
-                                          cfg.mtr_arm_rest_y_bias]):
+                           bias=np.array([self.cfg.mtr_arm_rest_x_bias,
+                                          self.cfg.mtr_arm_rest_y_bias]):
                            arm_obj.x - bias)
 
         # ------ MOTOR ARM CONTROL SIGNAL FEEDBACK ------
         # X to target norm calculation
-        target_thresh = cfg.mtr_tgt_threshold
+        target_thresh = self.cfg.mtr_tgt_threshold
         target_diff_norm = \
             nengo.Ensemble(150, 2,
                            intercepts=Exponential(0.05, target_thresh,
@@ -148,7 +149,7 @@ class MotorSystem(Module):
                          synapse=0.01)
 
         # ------ MOTOR PEN DOWN CONTROL ------
-        pen_down = cfg.make_thresh_ens_net()
+        pen_down = self.cfg.make_thresh_ens_net()
 
         # Pen is down by default
         nengo.Connection(bias_node, pen_down.input)
